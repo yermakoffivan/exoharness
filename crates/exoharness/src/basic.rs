@@ -1905,11 +1905,7 @@ impl<'a> BasicScopedSandboxHandle<'a> {
         if !sandbox.running {
             bail!("sandbox is not running: {id}");
         }
-        let (sandbox_handle, provider_state_event) =
-            active_sandbox_handle(self.harness, &self.owner_dir, self.owner, &id, &sandbox).await?;
-        if let Some(event) = provider_state_event {
-            self.append_events(vec![event]).await?;
-        }
+        let sandbox_handle = self.active_sandbox_handle(&id, &sandbox).await?;
         sandbox_handle.connect_tcp(port).await
     }
 
@@ -1919,11 +1915,7 @@ impl<'a> BasicScopedSandboxHandle<'a> {
         if !sandbox.running {
             bail!("sandbox is not running: {id}");
         }
-        let (sandbox_handle, provider_state_event) =
-            active_sandbox_handle(self.harness, &self.owner_dir, self.owner, &id, &sandbox).await?;
-        if let Some(event) = provider_state_event {
-            self.append_events(vec![event]).await?;
-        }
+        let sandbox_handle = self.active_sandbox_handle(&id, &sandbox).await?;
         Ok(sandbox_handle.supports_tcp())
     }
 
@@ -2278,6 +2270,19 @@ impl<'a> BasicScopedSandboxHandle<'a> {
 
     async fn load_sandbox(&self, id: &str) -> Result<StoredSandbox> {
         load_stored_sandbox(self.harness, &self.owner_dir, id).await
+    }
+
+    async fn active_sandbox_handle(
+        &self,
+        id: &SandboxId,
+        sandbox: &StoredSandbox,
+    ) -> Result<Arc<dyn ManagedSandboxHandle>> {
+        let (handle, provider_state_event) =
+            active_sandbox_handle(self.harness, &self.owner_dir, self.owner, id, sandbox).await?;
+        if let Some(event) = provider_state_event {
+            self.append_events(vec![event]).await?;
+        }
+        Ok(handle)
     }
 
     async fn require_sandbox_process(
