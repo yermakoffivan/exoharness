@@ -42,6 +42,8 @@ pub trait SnapshotHandle: Send + Sync {
 #[async_trait]
 pub trait SandboxHandle: SnapshotHandle {
     async fn create_sandbox(&self, request: CreateSandboxRequest) -> Result<SandboxId>;
+    async fn fork_sandbox(&self, request: ForkSandboxRequest) -> Result<SandboxId>;
+    async fn terminate_sandbox(&self, id: SandboxId) -> Result<()>;
     async fn attach_sandbox(&self, request: AttachSandboxRequest) -> Result<SandboxId>;
     async fn detach_sandbox(&self, id: SandboxId) -> Result<SandboxAttachment>;
     async fn stop_sandbox(&self, id: SandboxId) -> Result<()>;
@@ -637,6 +639,12 @@ pub struct CreateSandboxRequest {
     pub durable_file_systems: Option<Vec<DurableFileSystem>>,
     pub enable_networking: Option<bool>,
     pub idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForkSandboxRequest {
+    pub source_id: SandboxId,
+    pub sandbox: CreateSandboxRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

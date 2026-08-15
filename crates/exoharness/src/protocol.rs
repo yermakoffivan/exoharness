@@ -5,7 +5,7 @@ use crate::{
     AttachSandboxRequest, BeginTurnRequest, Binding, BindingId, BindingRecord,
     CancelSandboxProcessRequest, CloseSandboxProcessInputRequest, ConversationId,
     CreateSandboxRequest, Event, EventData, EventId, EventQuery, ForkConversationRequest,
-    GetEventsResult, GetSandboxProcessEventsResult, ListConversationsRequest,
+    ForkSandboxRequest, GetEventsResult, GetSandboxProcessEventsResult, ListConversationsRequest,
     ListConversationsResult, NewAgentRequest, NewConversationRequest, PutSecretRequest,
     ReadArtifactRequest, SandboxAttachment, SandboxId, SandboxProcessEventQuery,
     SandboxProcessRecord, SandboxProcessStatus, Secret, SecretId, SecretMetadata, SessionId,
@@ -130,6 +130,14 @@ pub enum Request {
     CreateSandbox {
         scope: SandboxScope,
         request: CreateSandboxRequest,
+    },
+    ForkSandbox {
+        scope: SandboxScope,
+        request: ForkSandboxRequest,
+    },
+    TerminateSandbox {
+        scope: SandboxScope,
+        sandbox_id: SandboxId,
     },
     AttachSandbox {
         scope: SandboxScope,
@@ -316,6 +324,8 @@ impl Request {
             Self::AgentReadArtifact { .. } => "agent_read_artifact",
             Self::AgentWriteArtifact { .. } => "agent_write_artifact",
             Self::CreateSandbox { .. } => "create_sandbox",
+            Self::ForkSandbox { .. } => "fork_sandbox",
+            Self::TerminateSandbox { .. } => "terminate_sandbox",
             Self::AttachSandbox { .. } => "attach_sandbox",
             Self::DetachSandbox { .. } => "detach_sandbox",
             Self::SnapshotSandbox { .. } => "snapshot_sandbox",

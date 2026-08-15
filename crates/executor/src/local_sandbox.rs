@@ -8,13 +8,13 @@ use exoharness::{
     AttachSandboxRequest, Binding, BindingId, BindingRecord, CancelSandboxProcessRequest,
     CloseSandboxProcessInputRequest, ConversationHandle, ConversationId, CreateSandboxRequest,
     Event, EventData, EventId, EventKind, EventStream, ExoHarness, ForkConversationRequest,
-    GetEventsResult, ListConversationsRequest, ListConversationsResult, NewAgentRequest,
-    NewConversationRequest, PutSecretRequest, ReadArtifactRequest, Result, RunInSandboxRequest,
-    SandboxAttachment, SandboxHandle, SandboxId, SandboxProcess, SandboxProcessEventQuery,
-    SandboxProcessRecord, SandboxProcessStatus, SandboxProvider, Secret, SecretId, SecretMetadata,
-    SnapshotHandle, SnapshotId, StartSandboxProcessRequest, StartSandboxRequest, TurnHandle,
-    TurnRecord, Uuid7, WaitSandboxProcessRequest, WriteArtifactRequest,
-    WriteSandboxProcessInputRequest,
+    ForkSandboxRequest, GetEventsResult, ListConversationsRequest, ListConversationsResult,
+    NewAgentRequest, NewConversationRequest, PutSecretRequest, ReadArtifactRequest, Result,
+    RunInSandboxRequest, SandboxAttachment, SandboxHandle, SandboxId, SandboxProcess,
+    SandboxProcessEventQuery, SandboxProcessRecord, SandboxProcessStatus, SandboxProvider, Secret,
+    SecretId, SecretMetadata, SnapshotHandle, SnapshotId, StartSandboxProcessRequest,
+    StartSandboxRequest, TurnHandle, TurnRecord, Uuid7, WaitSandboxProcessRequest,
+    WriteArtifactRequest, WriteSandboxProcessInputRequest,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -326,6 +326,30 @@ impl SandboxHandle for LocalSandboxAgent {
         let remote_id = local_id.clone();
         self.map_local_sandbox(remote_id.clone(), local_id).await;
         Ok(remote_id)
+    }
+
+    async fn fork_sandbox(&self, mut request: ForkSandboxRequest) -> Result<SandboxId> {
+        let Some(local_source_id) = self.local_sandbox_id(&request.source_id).await? else {
+            return self.remote.fork_sandbox(request).await;
+        };
+        request.source_id = local_source_id;
+        let local_id = self.local_agent().await?.fork_sandbox(request).await?;
+        let remote_id = local_id.clone();
+        self.map_local_sandbox(remote_id.clone(), local_id).await;
+        Ok(remote_id)
+    }
+
+    async fn terminate_sandbox(&self, id: SandboxId) -> Result<()> {
+        let Some(local_id) = self.local_sandbox_id(&id).await? else {
+            return self.remote.terminate_sandbox(id).await;
+        };
+        self.local_agent()
+            .await?
+            .terminate_sandbox(local_id)
+            .await?;
+        self.state.sandboxes.lock().await.remove(&id);
+        self.state.detached_sandboxes.lock().await.remove(&id);
+        Ok(())
     }
 
     async fn attach_sandbox(&self, request: AttachSandboxRequest) -> Result<SandboxId> {
@@ -863,6 +887,54 @@ impl SandboxHandle for LocalSandboxConversation {
         ])
         .await?;
         Ok(remote_id)
+    }
+
+    async fn fork_sandbox(&self, mut request: ForkSandboxRequest) -> Result<SandboxId> {
+        let Some(local_source_id) = self.local_sandbox_id(&request.source_id).await? else {
+            return self.remote.fork_sandbox(request).await;
+        };
+        let sandbox = request.sandbox.clone();
+        request.source_id = local_source_id;
+        let remote_id = format!("sandbox-{}", Uuid7::now());
+        let local_id = self
+            .local_conversation()
+            .await?
+            .fork_sandbox(request)
+            .await?;
+        self.map_local_sandbox(remote_id.clone(), local_id).await?;
+        self.append_remote_sandbox_events(vec![
+            EventData::SandboxCreated {
+                sandbox_id: remote_id.clone(),
+                name: sandbox.name,
+                provider: sandbox.provider,
+                image: sandbox.image,
+                default_workdir: sandbox.default_workdir.unwrap_or_default(),
+                file_system_mounts: sandbox.file_system_mounts.unwrap_or_default(),
+                durable_file_systems: sandbox.durable_file_systems.unwrap_or_default(),
+                enable_networking: sandbox.enable_networking.unwrap_or(true),
+                idle_seconds: sandbox.idle_seconds.unwrap_or(60),
+            },
+            EventData::SandboxStarted {
+                sandbox_id: remote_id.clone(),
+                snapshot_id: None,
+            },
+        ])
+        .await?;
+        Ok(remote_id)
+    }
+
+    async fn terminate_sandbox(&self, id: SandboxId) -> Result<()> {
+        let Some(local_id) = self.local_sandbox_id(&id).await? else {
+            return self.remote.terminate_sandbox(id).await;
+        };
+        self.local_conversation()
+            .await?
+            .terminate_sandbox(local_id)
+            .await?;
+        self.state.sandboxes.lock().await.remove(&id);
+        self.state.detached_sandboxes.lock().await.remove(&id);
+        self.append_remote_sandbox_events(vec![EventData::SandboxStopped { sandbox_id: id }])
+            .await
     }
 
     async fn attach_sandbox(&self, request: AttachSandboxRequest) -> Result<SandboxId> {
