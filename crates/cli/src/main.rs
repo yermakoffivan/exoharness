@@ -66,9 +66,6 @@ struct Cli {
     master_key_path: Option<PathBuf>,
     #[arg(long, global = true, value_enum, env = "EXO_SANDBOX_BACKEND")]
     sandbox_backend: Option<SandboxBackendArg>,
-    /// Restore Firecracker VMs from reusable snapshots instead of cold booting them.
-    #[arg(long, global = true)]
-    firecracker_snapshots: bool,
     #[arg(long, global = true)]
     env_file: Option<PathBuf>,
     #[arg(long, global = true)]
@@ -261,13 +258,11 @@ enum SandboxBackendArg {
 }
 
 impl SandboxBackendArg {
-    fn registration(self, firecracker_snapshots: bool) -> SandboxBackendRegistration {
+    fn registration(self) -> SandboxBackendRegistration {
         match self {
             SandboxBackendArg::AppleContainer => SandboxBackendRegistration::apple_container(),
             SandboxBackendArg::Docker => SandboxBackendRegistration::docker(),
-            SandboxBackendArg::Firecracker => {
-                SandboxBackendRegistration::firecracker_with_snapshots(firecracker_snapshots)
-            }
+            SandboxBackendArg::Firecracker => SandboxBackendRegistration::firecracker(),
             SandboxBackendArg::LocalProcess => SandboxBackendRegistration::local_process(),
         }
     }
@@ -282,10 +277,10 @@ fn build_exo_config(cli: &Cli) -> Result<BasicExoHarnessConfig> {
     };
     let sandbox_backend = cli
         .sandbox_backend
-        .map(|backend| backend.registration(cli.firecracker_snapshots))
+        .map(SandboxBackendArg::registration)
         .unwrap_or_else(default_sandbox_backend);
     let sandbox_default = sandbox_backend.provider();
-    let mut sandbox_backends = default_sandbox_backends(cli.firecracker_snapshots);
+    let mut sandbox_backends = default_sandbox_backends();
     if !sandbox_backends
         .iter()
         .any(|backend| backend.provider() == sandbox_default)
@@ -302,10 +297,10 @@ fn build_exo_config(cli: &Cli) -> Result<BasicExoHarnessConfig> {
 
 /// Default providers: the OS-local container backend, local processes, and
 /// Daytona (offered even with no key set — credentials resolve lazily).
-fn default_sandbox_backends(firecracker_snapshots: bool) -> Vec<SandboxBackendRegistration> {
+fn default_sandbox_backends() -> Vec<SandboxBackendRegistration> {
     vec![
         default_sandbox_backend(),
-        SandboxBackendRegistration::firecracker_with_snapshots(firecracker_snapshots),
+        SandboxBackendRegistration::firecracker(),
         SandboxBackendRegistration::local_process(),
         SandboxBackendRegistration::daytona(DaytonaBackendSpec::default()),
         SandboxBackendRegistration::e2b(E2bBackendSpec::default()),
@@ -3321,7 +3316,6 @@ mod create_tests {
             "test-model",
         ])
         .expect("local-process sandbox provider parses");
-        assert!(!cli.firecracker_snapshots);
         assert!(matches!(
             cli.command,
             super::Commands::Agent {
@@ -3340,7 +3334,6 @@ mod create_tests {
             "exo",
             "--sandbox-backend",
             "firecracker",
-            "--firecracker-snapshots",
             "agent",
             "create",
             "test",
@@ -3354,7 +3347,6 @@ mod create_tests {
             cli.sandbox_backend,
             Some(super::SandboxBackendArg::Firecracker)
         ));
-        assert!(cli.firecracker_snapshots);
         assert!(matches!(
             cli.command,
             super::Commands::Agent {

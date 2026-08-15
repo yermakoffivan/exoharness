@@ -135,10 +135,6 @@ pub enum Request {
         scope: SandboxScope,
         request: ForkSandboxRequest,
     },
-    TerminateSandbox {
-        scope: SandboxScope,
-        sandbox_id: SandboxId,
-    },
     AttachSandbox {
         scope: SandboxScope,
         request: AttachSandboxRequest,
@@ -325,7 +321,6 @@ impl Request {
             Self::AgentWriteArtifact { .. } => "agent_write_artifact",
             Self::CreateSandbox { .. } => "create_sandbox",
             Self::ForkSandbox { .. } => "fork_sandbox",
-            Self::TerminateSandbox { .. } => "terminate_sandbox",
             Self::AttachSandbox { .. } => "attach_sandbox",
             Self::DetachSandbox { .. } => "detach_sandbox",
             Self::SnapshotSandbox { .. } => "snapshot_sandbox",
